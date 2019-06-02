@@ -6,7 +6,20 @@
 #include <ctime>
 #include <algorithm>
 
-const int ARRAY_SIZE = 1000;
+#include <CL/cl.h>
+
+
+#include <fcntl.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <math.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <stdbool.h>
+#include <Windows.h>
+
+const int ARRAY_SIZE = 20;
 const int MAX_VALUE = 1000;
 
 MPI_Status status;
@@ -190,40 +203,227 @@ void masterThread(int& processorID, int& processorNum
 	/// print final array sorted
 	print(arrayToSort, arraySize);
 	/// check final array is sorted from <
-	checkArray(arrayToSort, arraySize);
+	//checkArray(arrayToSort, arraySize);
 
 };
 
 void workerThread(int& processorID, int& processorNum
-	, int& totalProcessors, int& processorDestination, int& sourceID, int& arraySubSet, int& left, int& right) {
+	, int& totalProcessors, int& processorDestination, int& sourceID, int& arraySubSet0, int& left, int& right) {
 
 	sourceID = 0;
 	MPI_Recv(&left, 1, MPI_INT, sourceID, 1, MPI_COMM_WORLD, &status);
-	MPI_Recv(&arraySubSet, 1, MPI_INT, sourceID, 1, MPI_COMM_WORLD, &status);
+	MPI_Recv(&arraySubSet0, 1, MPI_INT, sourceID, 1, MPI_COMM_WORLD, &status);
 	MPI_Recv(&right, 1, MPI_INT, sourceID, 1, MPI_COMM_WORLD, &status);
-	MPI_Recv(&arrayToSort, arraySubSet, MPI_INT, sourceID, 1, MPI_COMM_WORLD, &status);
+	MPI_Recv(&arrayToSort, arraySubSet0, MPI_INT, sourceID, 1, MPI_COMM_WORLD, &status);
+	int arraySubSet = arraySubSet0;
 	printf("--: BEGIN MPI PROCCESS %d :--\n", processorID);
-
+	printf("--: arraySubSet: %d :--\n", arraySubSet);
+	
 	/// assigning array data for quicksort
-	int * array;
+	/*int * array;
 	array = (int *)calloc(arraySubSet, sizeof(int));
 	for (size_t i = 0; i < arraySubSet; i++)
 	{
 		array[i] = arrayToSort[i];
 	}
-	int arraySize = arraySubSet;
+	int arraySize = arraySubSet;*/
 
-	/// run quicksort on worker data
+	/*/// run quicksort on worker data
 	quicksort(array, 0, arraySize-1, arraySize);
 	/// print worker array once sorted
 	printf("\n- Process %d sorted data -\n", processorID);
 	print(array, arraySize);
+	*/
+	/////////////////////////////////////////////////////////////////////////////////
+/*
+	unsigned int * arrayStart_host;
+	arrayStart_host = (unsigned int *)calloc(arraySubSet, sizeof(unsigned int));
+	///*/
+	unsigned int arrayStart_mem_size = sizeof(unsigned int) * arraySubSet;//(matrixRows*MAX_MATRIX_LENGTH);
+	unsigned int* arrayStart_host = (unsigned int*)malloc(arrayStart_mem_size);
+
+	unsigned int arrayFinal_mem_size = sizeof(unsigned int) * arraySubSet;//(matrixRows*MAX_MATRIX_LENGTH);
+	unsigned int* arrayfinal_host = (unsigned int*)malloc(arrayFinal_mem_size);
+
+	for (size_t i = 0; i < arraySubSet; i++)
+	{
+		arrayfinal_host[i] = 0;
+		arrayStart_host[i] = arrayToSort[i];
+	}
+	unsigned int arraySize = arraySubSet;
+	/*for (size_t i = 0; i < arraySubSet; i++)
+	{
+		printf("[%d:%d], ", i, arrayStart_host[i]);
+	}*/
+	/*for (size_t i = 0; i < arraySubSet; i++)
+	{
+		printf("host srate memory[%d]:%d, ",i, arrayStart_host[i]);
+	}*/
+
+/// Allocate host memory for subject matrices
+
+	/// begin OpenCL code
+	int errMsg;                         // error code
+	///Open CL vars
+	cl_command_queue commands;
+	cl_program program;
+	cl_device_id device_id;
+	cl_context context;
+	cl_kernel kernel;
+
+	/// OpenCL device memory for matrix 0,1,2
+	cl_mem arrayStart_CL_mem;
+	cl_mem arrayFinal_CL_mem;
+
+	cl_uint dev_cnt = 1;
+	clGetPlatformIDs(0, 0, &dev_cnt);
+
+	cl_platform_id platform_ids[100];
+	clGetPlatformIDs(dev_cnt, platform_ids, NULL);
+
+	/// Connectcompute device and check for error
+	int gpu = 1;
+	errMsg = clGetDeviceIDs(platform_ids[0], gpu ? CL_DEVICE_TYPE_GPU : CL_DEVICE_TYPE_CPU, 1, &device_id, NULL);
+	if (errMsg != CL_SUCCESS)
+	{
+		printf("Error -  Failed to create a device\n");
+		return;
+	}
+
+	/// Create a context 
+	context = clCreateContext(0, 1, &device_id, NULL, NULL, &errMsg);
+	if (!context)
+	{
+		printf("Error -  Failed to create a context\n");
+		return;
+	}
+
+	/// Create a command with properties
+	commands = clCreateCommandQueueWithProperties(context, device_id, 0, &errMsg);
+	if (!commands)
+	{
+		printf("Error - Failed to create a command with properties\n");
+		return;
+	}
+
+	///Load the file which containing the kernel code, .cl file
+	char string[256];
+	FILE *fp;
+	// my lovely personal path - worked as reletive path did not...?
+	char fileName[] = "D:\\University\\Uni 2019\\Programming Paradigms\\assignments\\M3.T2C\\MSMPI_OpenCL_quicksort\\M3.T1P\\quicksort.cl";//"vector_add_kernel.cl";
+	char *source_str;
+	size_t source_size;
+
+	fp = fopen(fileName, "r");
+	if (!fp) {
+
+		printf("Failed to load kernel.\n");
+		exit(1);
+	}
+	source_str = (char*)malloc(0x100000);
+	source_size = fread(source_str, 1, 0x100000, fp);
+	fclose(fp);
+
+	/// Create Kernel Program from file
+	program = clCreateProgramWithSource(context, 1, (const char **)&source_str, (const size_t *)&source_size, &errMsg);
+	if (errMsg != CL_SUCCESS) {
+		printf("Error - Failed to create OpenCL program from file %d\n", (int)errMsg);
+		exit(1);
+	}
+
+	/// Build the executable frome the kernel file
+	errMsg = clBuildProgram(program, 1, &device_id, NULL, NULL, NULL);
+	if (errMsg != CL_SUCCESS)
+	{
+		size_t len;
+		char buffer[2048];
+		printf("Error - Failed to build executable!\n");
+		clGetProgramBuildInfo(program, device_id, CL_PROGRAM_BUILD_LOG, sizeof(buffer), buffer, &len);
+		printf("%s\n", buffer);
+		exit(1);
+	}
+
+	/// Create the compute kernel in the program we wish to run
+	kernel = clCreateKernel(program, "quicksort", &errMsg);
+	if (!kernel || errMsg != CL_SUCCESS)
+	{
+		printf("Error - Failed to create kernel!\n");
+		exit(1);
+	}
+
+	/// make the matrices data in to device memory for our calculation
+	arrayFinal_CL_mem = clCreateBuffer(context, CL_MEM_READ_WRITE, arrayFinal_mem_size, arrayfinal_host, &errMsg);
+	arrayStart_CL_mem = clCreateBuffer(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, arrayStart_mem_size, arrayStart_host, &errMsg);
+
+	if (!arrayStart_CL_mem || !arrayFinal_CL_mem)
+	{
+		printf("Error - Failed to allocate buffer device memory!\n");
+		exit(1);
+	}
+
+	/// alocate global and local work sizes used in kernel
+	size_t localWorkSize[2], globalWorkSize[2];
+
+	/// add parameters to kernel method arguments
+	errMsg = clSetKernelArg(kernel, 0, sizeof(cl_mem), (void *)&arrayStart_CL_mem);
+	errMsg |= clSetKernelArg(kernel, 1, sizeof(cl_mem), (void *)&arrayFinal_CL_mem);
+
+	/// checks argments are valid
+	if (errMsg != CL_SUCCESS)
+	{
+		printf("Error - Failed to set kernel arguments! %d\n", errMsg);
+		exit(1);
+	}
+
+	localWorkSize[0] = arraySubSet; /// TODO make divisiable by sub array size
+	globalWorkSize[0] = arraySubSet;
+
+	errMsg = clEnqueueNDRangeKernel(commands, kernel, 1, NULL, globalWorkSize, localWorkSize, 0, NULL, NULL);
+	if (errMsg != CL_SUCCESS)
+	{
+		printf("Error - Failed to execute kernel, %d\n", errMsg);
+		exit(1);
+	}
+
+	///get result from device after processing
+	errMsg = clEnqueueReadBuffer(commands, arrayFinal_CL_mem, CL_TRUE, 0, arrayFinal_mem_size, arrayfinal_host, 0, NULL, NULL);
+	/// check if result is valid
+	if (errMsg != CL_SUCCESS)
+	{
+		printf("Error: Failed to read output array! %d\n", errMsg);
+		exit(1);
+	}
+
+
+	///// place OpenCL matric back into MPI matrix
+	//// this had me stumped for a long time, I had a quarter populated matrix for 3 days...
+	//// eventuall figured it out as rows and cols where flipped and removed matrixRow var from loop
+	//for (k_iter = 0; k_iter < (MAX_MATRIX_LENGTH); k_iter++)
+	//{
+	//	for (i_iter = 0; i_iter < MAX_MATRIX_LENGTH; i_iter++)
+	//	{
+	//		matrix_final[i_iter][k_iter] = matrix_2_host_mem[(k_iter*MAX_MATRIX_LENGTH) + i_iter];
+	//	}
+	//}
 	
+
 	/// assignonf new data back to old array
 	for (size_t i = 0; i < arraySubSet; i++)
 	{
-		arrayToSort[i] = array[i];
+		arrayToSort[i] = arrayfinal_host[i];
 	}
+
+	/// clean up OpenCL
+	free(arrayStart_host);
+	free(arrayfinal_host);
+
+	clReleaseMemObject(arrayStart_CL_mem);
+	clReleaseMemObject(arrayFinal_CL_mem);
+
+	clReleaseProgram(program);
+	clReleaseKernel(kernel);
+	clReleaseCommandQueue(commands);
+	clReleaseContext(context);
 
 	/// sending matrix data back to the master thread
 	MPI_Send(&left, 1, MPI_INT, 0, 2, MPI_COMM_WORLD);

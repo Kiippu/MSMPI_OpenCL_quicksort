@@ -91,11 +91,12 @@
       <Optimization>Disabled</Optimization>
       <SDLCheck>true</SDLCheck>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>$(MSMPI_INC); $(MSMPI_INC)\x64;</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(MSMPI_INC); $(MSMPI_INC)\x64;D:\University\Uni 2019\Programming Paradigms\assignments\M3.T1P\OpenCL\OpenCL\include\OpenCL;</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;_MBCS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <Link>
-      <AdditionalDependencies>msmpi.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>$(MSMPI_LIB64)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>msmpi.lib;OpenCL.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(MSMPI_LIB64);D:\University\Uni 2019\Programming Paradigms\assignments\M3.T1P\OpenCL\OpenCL\lib\OpenCL\x64;</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -128,11 +129,13 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="Source.cpp" />
-    <ClCompile Include="Source1.cpp" />
     <ClCompile Include="Timer.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Timer.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="quicksort.cl" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
